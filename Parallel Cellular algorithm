@@ -1,58 +1,107 @@
+import random
 import numpy as np
+import matplotlib.pyplot as plt
+from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import cpu_count
 
-def optimization_function(position):
-    return position[0]*2 + position[1]*2
+# -------------------------
+# Initialization helpers
+# -------------------------
+def init_traffic(L, density, seed=None):
+    """Return sorted positions list and velocities list for cars."""
+    if seed is not None:
+        random.seed(seed)
+        np.random.seed(seed)
+    num_cars = int(round(density * L))
+    positions = sorted(random.sample(range(L), num_cars))
+    velocities = [0] * num_cars
+    return positions, velocities
 
-def initialize_parameters():
-    grid_size = (10, 10)
-    num_iterations = 100
-    neighborhood_size = 1
-    return grid_size, num_iterations, neighborhood_size
+# -------------------------
+# Single-car update (thread worker)
+# -------------------------
+def update_car(i, positions, velocities, L, vmax, p):
+    """
+    Update a single car (Nagel-Schreckenberg rules).
+    Returns (new_position, new_velocity).
+    """
+    pos = positions[i]
+    v = velocities[i]
+    # next car index (cyclic ring road)
+    next_pos = positions[(i + 1) % len(positions)]
+    # gap ahead (number of empty cells)
+    gap = (next_pos - pos - 1) % L
 
-def initialize_population(grid_size):
-    population = np.random.uniform(-10, 10, (grid_size[0], grid_size[1], 2))
-    return population
+    # 1) acceleration
+    v = min(v + 1, vmax)
+    # 2) deceleration due to other cars
+    v = min(v, gap)
+    # 3) random slowdown with probability p
+    if v > 0 and random.random() < p:
+        v -= 1
+    new_pos = (pos + v) % L
+    return new_pos, v
 
-def evaluate_fitness(population):
-    fitness = np.zeros((population.shape[0], population.shape[1]))
-    for i in range(population.shape[0]):
-        for j in range(population.shape[1]):
-            fitness[i, j] = optimization_function(population[i, j])
-    return fitness
+# -------------------------
+# Parallel simulation driver
+# -------------------------
+def run_traffic_parallel(L=100, density=0.2, vmax=5, p=0.25, T=80, seed=1):
+    """
+    Run the NS traffic CA in 'parallel' by updating each car using a ThreadPool.
+    Returns a (T x L) numpy array of occupancy (0 empty, 1 occupied).
+    """
+    positions, velocities = init_traffic(L, density, seed=seed)
+    n = len(positions)
+    if n == 0:
+        # nothing to simulate
+        return np.zeros((T, L), dtype=int)
 
-def update_states(population, fitness, neighborhood_size):
-    updated_population = np.copy(population)
-    for i in range(population.shape[0]):
-        for j in range(population.shape[1]):
-            x_min = max(i - neighborhood_size, 0)
-            x_max = min(i + neighborhood_size + 1, population.shape[0])
-            y_min = max(j - neighborhood_size, 0)
-            y_max = min(j + neighborhood_size + 1, population.shape[1])
-            best_neighbor = population[i, j]
-            best_fitness = fitness[i, j]
-            for x in range(x_min, x_max):
-                for y in range(y_min, y_max):
-                    if fitness[x, y] < best_fitness:
-                        best_neighbor = population[x, y]
-                        best_fitness = fitness[x, y]
-            updated_population[i, j] = (population[i, j] + best_neighbor) / 2
-    return updated_population
+    spacetime = np.zeros((T, L), dtype=int)
+    # record t=0 occupancy
+    for pos in positions:
+        spacetime[0, pos] = 1
 
-def parallel_cellular_algorithm():
-    grid_size, num_iterations, neighborhood_size = initialize_parameters()
-    population = initialize_population(grid_size)
-    best_solution = None
-    best_fitness = float('inf')
-    for iteration in range(num_iterations):
-        fitness = evaluate_fitness(population)
-        min_fitness = np.min(fitness)
-        if min_fitness < best_fitness:
-            best_fitness = min_fitness
-            best_solution = population[np.unravel_index(np.argmin(fitness), fitness.shape)]
-        population = update_states(population, fitness, neighborhood_size)
-        print(f"Iteration {iteration + 1}: Best Fitness = {best_fitness}")
-    print(f"Best Solution: {best_solution}, Best Fitness: {best_fitness}")
-    return best_solution, best_fitness
+    workers = min(cpu_count(), max(1, n))
+    for t in range(1, T):
+        args = [(i, positions, velocities, L, vmax, p) for i in range(n)]
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            results = list(ex.map(lambda a: update_car(*a), args))
 
+        # collect and sort cars by position to preserve cyclic order
+        new_positions = [r[0] for r in results]
+        new_velocities = [r[1] for r in results]
+        paired = sorted(zip(new_positions, new_velocities))
+        positions = [pp for pp, vv in paired]
+        velocities = [vv for pp, vv in paired]
+
+        for pos in positions:
+            spacetime[t, pos] = 1
+
+    return spacetime
+
+# -------------------------
+# Plotting function
+# -------------------------
+def plot_spacetime(spacetime, title="Space-time diagram — Traffic"):
+    plt.figure(figsize=(10, 6))
+    # origin='lower' so time 0 is at bottom and increases upward
+    plt.imshow(spacetime, aspect='auto', origin='lower')
+    plt.xlabel("Position along road (cell index)")
+    plt.ylabel("Time step")
+    plt.title(title)
+    plt.tight_layout()
+    plt.show()
+
+# -------------------------
+# Example run (change parameters below)
+# -------------------------
 if __name__ == "__main__":
-    parallel_cellular_algorithm()
+    L = 120         # number of cells along road
+    density = 0.18  # initial car density (fraction)
+    vmax = 5        # maximum car speed (cells/time-step)
+    p = 0.25        # random slowdown probability
+    T = 80          # time steps to simulate
+    seed = 42       # reproducible
+
+    spacetime = run_traffic_parallel(L=L, density=density, vmax=vmax, p=p, T=T, seed=seed)
+    plot_spacetime(spacetime, title="Space-time diagram — Nagel–Schreckenberg (parallel update)")
