@@ -1,100 +1,72 @@
-import numpy as np
+import random
 
-# Define the optimization problem (e.g., f(x, y) = x^2 + y^2)
-def optimization_function(solution):
-    return solution[0]**2 + solution[1]**2  # Ensure non-negative fitness values
+# -----------------------------------
+# Knapsack Data
+# -----------------------------------
+weights = [10, 20, 30, 40, 50]
+values  = [60, 100, 120, 240, 150]
+capacity = 100
 
-# Initialize parameters
-def initialize_parameters():
-    population_size = 50
-    num_genes = 2  # Dimensionality of the solution
-    mutation_rate = 0.1
-    crossover_rate = 0.8
-    num_generations = 100
-    return population_size, num_genes, mutation_rate, crossover_rate, num_generations
+# -----------------------------------
+# Parameters
+# -----------------------------------
+POP_SIZE = 20
+GENERATIONS = 10
+MUTATION_RATE = 0.1
 
-# Initialize population
-def initialize_population(population_size, num_genes):
-    return np.random.uniform(-10, 10, (population_size, num_genes))
+# -----------------------------------
+# Fitness function
+# -----------------------------------
+def fitness(chrom):
+    total_w = 0
+    total_v = 0
+    for i in range(len(chrom)):
+        if chrom[i] == 1:
+            total_w += weights[i]
+            total_v += values[i]
+    return total_v if total_w <= capacity else 0
 
-# Evaluate fitness
-def evaluate_fitness(population):
-    return np.array([optimization_function(ind) for ind in population])
+# -----------------------------------
+# Helper Functions
+# -----------------------------------
+def create_chromosome():
+    return [random.randint(0, 1) for _ in range(len(weights))]
 
-# Selection
-def select_parents(population, fitness):
-    # Ensure fitness values are positive
-    if (fitness < 0).any():
-        fitness = fitness - fitness.min() + 1e-6  # Shift fitness values to positive
+def initial_population():
+    return [create_chromosome() for _ in range(POP_SIZE)]
 
-    probabilities = 1 / (fitness + 1e-6)  # Avoid division by zero
-    probabilities /= probabilities.sum()
-    indices = np.random.choice(len(population), size=len(population), p=probabilities)
-    return population[indices]
+def crossover(p1, p2):
+    point = random.randint(1, len(p1) - 2)
+    return p1[:point] + p2[point:]
 
-# Crossover
-def crossover(parents, crossover_rate):
-    offspring = []
-    for i in range(0, len(parents), 2):
-        if i + 1 < len(parents) and np.random.rand() < crossover_rate:
-            point = np.random.randint(1, parents.shape[1])
-            offspring1 = np.concatenate((parents[i, :point], parents[i + 1, point:]))
-            offspring2 = np.concatenate((parents[i + 1, :point], parents[i, point:]))
-            offspring.extend([offspring1, offspring2])
-        else:
-            offspring.extend([parents[i], parents[i + 1] if i + 1 < len(parents) else parents[i]])
-    return np.array(offspring)
+def mutate(chrom):
+    for i in range(len(chrom)):
+        if random.random() < MUTATION_RATE:
+            chrom[i] = 1 - chrom[i]
+    return chrom
 
-# Mutation
-def mutate(offspring, mutation_rate):
-    for individual in offspring:
-        if np.random.rand() < mutation_rate:
-            gene = np.random.randint(individual.size)
-            individual[gene] += np.random.normal(0, 1)  # Gaussian mutation
-    return offspring
+def best_of_population(pop):
+    return max(pop, key=lambda x: fitness(x))
 
-# Gene expression (identity mapping in this example)
-def gene_expression(population):
-    return population
+# -----------------------------------
+# Main Loop
+# -----------------------------------
+population = initial_population()
 
-# Gene Expression Algorithm
-def gene_expression_algorithm():
-    # Step 1: Initialize parameters
-    population_size, num_genes, mutation_rate, crossover_rate, num_generations = initialize_parameters()
+for gen in range(GENERATIONS):
+    # Select the two best parents
+    sorted_pop = sorted(population, key=lambda x: fitness(x), reverse=True)
+    p1, p2 = sorted_pop[0], sorted_pop[1]
 
-    # Step 2: Initialize population
-    population = initialize_population(population_size, num_genes)
+    # Create new population
+    new_pop = []
+    for _ in range(POP_SIZE):
+        child = crossover(p1, p2)
+        mutate(child)
+        new_pop.append(child)
 
-    best_solution = None
-    best_fitness = float('inf')
+    population = new_pop
 
-    for generation in range(num_generations):
-        # Step 3: Evaluate fitness
-        fitness = evaluate_fitness(population)
-
-        # Track the best solution
-        min_fitness_idx = np.argmin(fitness)
-        if fitness[min_fitness_idx] < best_fitness:
-            best_fitness = fitness[min_fitness_idx]
-            best_solution = population[min_fitness_idx]
-
-        # Step 4: Selection
-        parents = select_parents(population, fitness)
-
-        # Step 5: Crossover
-        offspring = crossover(parents, crossover_rate)
-
-        # Step 6: Mutation
-        population = mutate(offspring, mutation_rate)
-
-        # Step 7: Gene Expression
-        population = gene_expression(population)
-
-        print(f"Generation {generation + 1}: Best Fitness = {best_fitness}")
-
-    print(f"Best Solution: {best_solution}, Best Fitness: {best_fitness}")
-    return best_solution, best_fitness
-
-# Run the algorithm
-if __name__ == "__main__":
-    gene_expression_algorithm()
+    # Print generation result
+    best = best_of_population(population)
+    print(f"Gen {gen} best fitness = {fitness(best)} best chromosome: {best}")
