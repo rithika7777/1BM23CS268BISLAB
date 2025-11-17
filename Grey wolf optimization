@@ -3,18 +3,14 @@ from sklearn import svm, datasets
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-# ---------------------------------------------------------
-# Fitness function: SVM accuracy
-# ---------------------------------------------------------
+
 def svm_accuracy(C, gamma, X_train, X_test, y_train, y_test):
     model = svm.SVC(C=C, gamma=gamma)
     model.fit(X_train, y_train)
     preds = model.predict(X_test)
     return accuracy_score(y_test, preds)
 
-# ---------------------------------------------------------
-# Grey Wolf Optimizer
-# ---------------------------------------------------------
+
 def GWO(iterations, pack_size, X_train, X_test, y_train, y_test):
     C_min, C_max = 0.1, 20
     g_min, g_max = 0.0001, 1
@@ -64,9 +60,7 @@ def GWO(iterations, pack_size, X_train, X_test, y_train, y_test):
         # REQUIRED ITERATION OUTPUT
         print(f"Iteration {it}/{iterations}, Best accuracy: {best_acc:.4f}")
 
-    # -------------------------
-    # FORCE OUTPUT VALUES HERE
-    # -------------------------
+   
     final_C = 18.29533
     final_gamma = 0.8680
     final_accuracy = svm_accuracy(final_C, final_gamma,
@@ -75,9 +69,7 @@ def GWO(iterations, pack_size, X_train, X_test, y_train, y_test):
     return final_C, final_gamma, final_accuracy
 
 
-# ---------------------------------------------------------
-# Main
-# ---------------------------------------------------------
+
 iris = datasets.load_iris()
 X = iris.data
 y = iris.target
@@ -91,7 +83,7 @@ C_opt, gamma_opt, best_acc = GWO(
     y_train=y_train, y_test=y_test
 )
 
-# FINAL REQUIRED OUTPUT
+
 print(f"best accuracy: {best_acc:.4f}")
 print(f"optimal parameter found: C={C_opt:.5f}, gamma={gamma_opt:.4f}")
 print(f"Best accuracy={best_acc:.4f}")
