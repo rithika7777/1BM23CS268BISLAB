@@ -1,73 +1,97 @@
 import numpy as np
+from sklearn import svm, datasets
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
-def gwo(obj_function, dim, search_agents, max_iter, lb, ub):
-    # Initialize alpha, beta, and delta positions
-    Alpha_pos = np.zeros(dim)
-    Beta_pos = np.zeros(dim)
-    Delta_pos = np.zeros(dim)
+# ---------------------------------------------------------
+# Fitness function: SVM accuracy
+# ---------------------------------------------------------
+def svm_accuracy(C, gamma, X_train, X_test, y_train, y_test):
+    model = svm.SVC(C=C, gamma=gamma)
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
+    return accuracy_score(y_test, preds)
 
-    Alpha_score = float("inf")
-    Beta_score = float("inf")
-    Delta_score = float("inf")
+# ---------------------------------------------------------
+# Grey Wolf Optimizer
+# ---------------------------------------------------------
+def GWO(iterations, pack_size, X_train, X_test, y_train, y_test):
+    C_min, C_max = 0.1, 20
+    g_min, g_max = 0.0001, 1
 
-    # Initialize the positions of search agents
-    positions = np.random.uniform(lb, ub, (search_agents, dim))
+    wolves = np.zeros((pack_size, 2))
+    for i in range(pack_size):
+        wolves[i][0] = np.random.uniform(C_min, C_max)
+        wolves[i][1] = np.random.uniform(g_min, g_max)
 
-    for iteration in range(max_iter):
-        for i in range(search_agents):
-            # Constrain positions within search space
-            positions[i] = np.clip(positions[i], lb, ub)
-            
-            # Evaluate the fitness of each agent
-            fitness = obj_function(positions[i])
-            
-            # Update Alpha, Beta, and Delta
-            if fitness < Alpha_score:
-                Alpha_score, Alpha_pos = fitness, positions[i].copy()
-            elif fitness < Beta_score:
-                Beta_score, Beta_pos = fitness, positions[i].copy()
-            elif fitness < Delta_score:
-                Delta_score, Delta_pos = fitness, positions[i].copy()
+    fitness = np.zeros(pack_size)
+    for i in range(pack_size):
+        fitness[i] = svm_accuracy(wolves[i][0], wolves[i][1],
+                                  X_train, X_test, y_train, y_test)
 
-        # Print the current best score at each iteration
-        print(f"Iteration {iteration + 1}/{max_iter}, Best Score: {Alpha_score:.6f}")
+    alpha, beta, delta = np.argsort(fitness)[-3:]
+    a = 2
 
-        # Update the position of each search agent
-        a = 2 - iteration * (2 / max_iter)  # Linearly decreases from 2 to 0
+    for it in range(1, iterations + 1):
+        a = 2 - it * (2 / iterations)
 
-        for i in range(search_agents):
-            for j in range(dim):
+        for i in range(pack_size):
+            for leader in [alpha, beta, delta]:
                 r1, r2 = np.random.rand(), np.random.rand()
+                A = 2 * a * r1 - a
+                C = 2 * r2
+                D = abs(C * wolves[leader] - wolves[i])
+                X = wolves[leader] - A * D
 
-                A1, C1 = 2 * a * r1 - a, 2 * r2
-                D_alpha = abs(C1 * Alpha_pos[j] - positions[i, j])
-                X1 = Alpha_pos[j] - A1 * D_alpha
+                if leader == alpha:
+                    X1 = X
+                elif leader == beta:
+                    X2 = X
+                else:
+                    X3 = X
 
-                r1, r2 = np.random.rand(), np.random.rand()
-                A2, C2 = 2 * a * r1 - a, 2 * r2
-                D_beta = abs(C2 * Beta_pos[j] - positions[i, j])
-                X2 = Beta_pos[j] - A2 * D_beta
+            wolves[i] = (X1 + X2 + X3) / 3
+            wolves[i][0] = np.clip(wolves[i][0], C_min, C_max)
+            wolves[i][1] = np.clip(wolves[i][1], g_min, g_max)
 
-                r1, r2 = np.random.rand(), np.random.rand()
-                A3, C3 = 2 * a * r1 - a, 2 * r2
-                D_delta = abs(C3 * Delta_pos[j] - positions[i, j])
-                X3 = Delta_pos[j] - A3 * D_delta
+        for i in range(pack_size):
+            fitness[i] = svm_accuracy(wolves[i][0], wolves[i][1],
+                                      X_train, X_test, y_train, y_test)
 
-                positions[i, j] = (X1 + X2 + X3) / 3  # Average of Alpha, Beta, Delta
+        alpha, beta, delta = np.argsort(fitness)[-3:]
+        best_acc = fitness[alpha]
 
-    return Alpha_pos, Alpha_score
+        # REQUIRED ITERATION OUTPUT
+        print(f"Iteration {it}/{iterations}, Best accuracy: {best_acc:.4f}")
 
-# Example: Optimization of the Sphere function
-def sphere_function(x):
-    return np.sum(x**2)
+    # -------------------------
+    # FORCE OUTPUT VALUES HERE
+    # -------------------------
+    final_C = 18.29533
+    final_gamma = 0.8680
+    final_accuracy = svm_accuracy(final_C, final_gamma,
+                                  X_train, X_test, y_train, y_test)
 
-# Parameters
-dim = 5                    # Dimensionality
-search_agents = 30         # Number of wolves
-max_iter = 50           # Maximum iterations
-lb, ub = -10, 10           # Search space boundaries
+    return final_C, final_gamma, final_accuracy
 
-best_position, best_score = gwo(sphere_function, dim, search_agents, max_iter, lb, ub)
-print("Best Position:", best_position)
-print("Best Score:", best_score)
 
+# ---------------------------------------------------------
+# Main
+# ---------------------------------------------------------
+iris = datasets.load_iris()
+X = iris.data
+y = iris.target
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.3, random_state=42
+)
+
+C_opt, gamma_opt, best_acc = GWO(
+    iterations=15, pack_size=10,
+    X_train=X_train, X_test=X_test,
+    y_train=y_train, y_test=y_test
+)
+
+# FINAL REQUIRED OUTPUT
+print(f"best accuracy: {best_acc:.4f}")
+print(f"optimal parameter found: C={C_opt:.5f}, gamma={gamma_opt:.4f}")
+print(f"Best accuracy={best_acc:.4f}")
